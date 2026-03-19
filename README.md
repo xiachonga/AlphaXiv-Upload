@@ -77,6 +77,19 @@ AlphaXiv-Upload/
 3. **PDF download** — A script is injected into the source tab (ACM/IEEE) so the fetch inherits the tab's network context (institutional access, cookies). For public PDFs the service worker fetches directly.
 4. **Upload** — The PDF is base64-encoded and POSTed to `https://api.alphaxiv.org/v2/papers/private` from within the alphaxiv.org tab context to satisfy CORS requirements.
 
+## Disclaimer
+
+This tool is intended **solely for personal, non-commercial research use**.
+
+- **Personal use only.** This extension is designed to help individual researchers save papers they already have legitimate access to into their own private AlphaXiv library. It is not intended for any commercial purpose.
+- **No bulk downloading.** The extension operates on a single paper at a time, triggered manually by the user. Modifying this software to perform automated or bulk downloading of papers from ACM, IEEE, or any other publisher is **strictly prohibited** and likely violates their Terms of Service.
+- **No redistribution.** Do not use this tool to download and redistribute copyrighted papers. Keep your AlphaXiv private library private.
+- **Respect access rights.** Only use this extension to access papers you are legitimately authorized to access (e.g., through institutional subscription, open access, or personal license).
+- **No warranty.** This software is provided as-is. The author assumes no liability for any misuse, ToS violations, or damages arising from use of this tool.
+- **API stability.** This extension uses AlphaXiv's internal API, which may change without notice.
+
+By using this extension, you agree to use it responsibly and in compliance with the terms of service of all platforms involved (AlphaXiv, ACM Digital Library, IEEE Xplore, arXiv, etc.).
+
 ## Requirements
 
 - Chrome (or any Chromium-based browser)
