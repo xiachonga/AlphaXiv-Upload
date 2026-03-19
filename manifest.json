@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "AlphaXiv Paper Uploader",
+  "version": "1.0.0",
+  "description": "Upload ACM/IEEE papers to your AlphaXiv private library with one click.",
+  "permissions": [
+    "storage",
+    "cookies",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://dl.acm.org/*",
+    "https://ieeexplore.ieee.org/*",
+    "https://alphaxiv.org/*",
+    "https://www.alphaxiv.org/*",
+    "https://api.alphaxiv.org/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://dl.acm.org/doi/*"],
+      "js": ["content/acm.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://ieeexplore.ieee.org/document/*"],
+      "js": ["content/ieee.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://alphaxiv.org/*", "https://www.alphaxiv.org/*"],
+      "js": ["content/alphaxiv.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

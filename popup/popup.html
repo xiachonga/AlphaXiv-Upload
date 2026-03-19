@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AlphaXiv Uploader</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <!-- Always-visible settings button -->
+  <div class="top-bar">
+    <span class="app-name">AlphaXiv Uploader</span>
+    <button id="btn-settings" class="btn-icon" title="Settings">⚙</button>
+  </div>
+
+  <!-- State: no supported page -->
+  <div id="state-no-paper" class="state hidden">
+    <div class="icon-wrap">📄</div>
+    <p class="hint">Open any PDF in Chrome, or navigate to an ACM / IEEE paper page, then click the extension.</p>
+  </div>
+
+  <!-- State: paper found, no token -->
+  <div id="state-no-token" class="state hidden">
+    <div class="paper-info">
+      <span class="label">Paper</span>
+      <span id="title-no-token" class="title"></span>
+    </div>
+    <p class="hint warn">API token not configured.</p>
+    <button id="btn-open-options" class="btn btn-secondary">Open Settings</button>
+  </div>
+
+  <!-- State: ready to upload -->
+  <div id="state-ready" class="state hidden">
+    <div class="paper-info">
+      <span class="label">Paper detected</span>
+      <span id="title-ready" class="title"></span>
+      <span id="source-badge" class="badge"></span>
+    </div>
+    <button id="btn-upload" class="btn btn-primary">Upload to Private Library</button>
+  </div>
+
+  <!-- State: uploading -->
+  <div id="state-uploading" class="state hidden">
+    <div class="spinner"></div>
+    <p class="hint">Uploading PDF to AlphaXiv…</p>
+    <p class="hint small" id="upload-size"></p>
+  </div>
+
+  <!-- State: success -->
+  <div id="state-success" class="state hidden">
+    <div class="icon-wrap success">✓</div>
+    <p class="hint success-text">Upload successful!</p>
+    <p class="hint small" id="success-detail"></p>
+    <button id="btn-done" class="btn btn-secondary">Close</button>
+  </div>
+
+  <!-- State: error -->
+  <div id="state-error" class="state hidden">
+    <div class="icon-wrap error">✕</div>
+    <p class="hint error-text" id="error-msg"></p>
+    <button id="btn-retry" class="btn btn-secondary">Retry</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

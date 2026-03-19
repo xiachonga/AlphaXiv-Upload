@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AlphaXiv Uploader — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>AlphaXiv Uploader</h1>
+      <p class="subtitle">Settings</p>
+    </header>
+
+    <!-- Token section -->
+    <section class="card">
+      <h2>API Token</h2>
+
+      <!-- Current token status -->
+      <div id="token-status" class="token-status hidden">
+        <span class="status-label">Saved token:</span>
+        <code id="token-preview"></code>
+        <button id="btn-clear-token" class="btn btn-danger btn-sm">Clear</button>
+      </div>
+
+      <!-- Auto-detect -->
+      <div class="row">
+        <button id="btn-auto-detect" class="btn btn-primary">Auto-detect from alphaxiv.org</button>
+        <p class="hint">Open <strong>alphaxiv.org</strong> and log in first, then click this button.</p>
+      </div>
+      <div id="auto-detect-result" class="result-banner hidden"></div>
+
+      <!-- Manual input -->
+      <div class="divider">or enter manually</div>
+
+      <div class="row">
+        <label for="token-input">Bearer Token</label>
+        <input
+          type="password"
+          id="token-input"
+          class="input"
+          placeholder="Paste your token here…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="input-actions">
+          <button id="btn-toggle-visibility" class="btn btn-ghost btn-sm">Show</button>
+        </div>
+      </div>
+
+      <div class="row row-inline">
+        <button id="btn-save-token" class="btn btn-primary">Save Token</button>
+        <button id="btn-test-token" class="btn btn-secondary">Test Connection</button>
+      </div>
+      <div id="save-result" class="result-banner hidden"></div>
+      <div id="test-result" class="result-banner hidden"></div>
+    </section>
+
+    <!-- Diagnostic section -->
+    <section class="card">
+      <h2>Diagnostic</h2>
+      <p class="hint" style="text-align:left;">If auto-detect fails, click below to dump everything alphaxiv.org has in storage and cookies. This helps you find where the token lives.</p>
+      <button id="btn-dump-clerk" class="btn btn-primary">Dump Clerk State</button>
+      <button id="btn-dump" class="btn btn-secondary">Dump Storage &amp; Cookies</button>
+      <pre id="dump-output" class="dump-output hidden"></pre>
+    </section>
+
+    <!-- How to find token guide -->
+    <section class="card">
+      <h2>How to find your token</h2>
+      <ol class="guide">
+        <li>Log in at <a href="https://alphaxiv.org" target="_blank">alphaxiv.org</a></li>
+        <li>On alphaxiv.org, open DevTools (F12) → <strong>Network</strong> tab</li>
+        <li>Refresh the page, click on any API request (e.g. to <code>api.alphaxiv.org</code>)</li>
+        <li>In Request Headers, find <code>Authorization: Bearer eyJ…</code></li>
+        <li>Copy everything after "Bearer " and paste it above</li>
+      </ol>
+    </section>
+
+    <footer>
+      <p>AlphaXiv Paper Uploader v1.0.0</p>
+    </footer>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
