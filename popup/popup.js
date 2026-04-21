@@ -11,7 +11,7 @@ function showState(name) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-function sendMessage(payload, timeoutMs = 8000) {
+function sendMessage(payload, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Service worker did not respond in time')), timeoutMs);
     chrome.runtime.sendMessage(payload, (response) => {
@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Ready state
   document.getElementById('title-ready').textContent = paper.title;
-  const badgeLabel = { acm: 'ACM DL', ieee: 'IEEE', web: 'PDF' };
+  const badgeLabel = { acm: 'ACM DL', ieee: 'IEEE', web: 'PDF', generic: 'PDF', 'context-menu': 'PDF' };
   document.getElementById('source-badge').textContent = badgeLabel[paper.source] || 'PDF';
   showState('ready');
 

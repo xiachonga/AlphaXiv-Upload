@@ -447,7 +447,7 @@ async function uploadPaper(tabId) {
   let base64pdf, fileSize;
   try {
     let result;
-    if (paper.source === 'acm' || paper.source === 'ieee') {
+    if (paper.source === 'acm' || paper.source === 'ieee' || paper.source === 'generic' || paper.source === 'context-menu') {
       // Inject into the source tab — reuses its authenticated network context
       const injected = await chrome.scripting.executeScript({
         target: { tabId },
@@ -600,6 +600,48 @@ async function uploadPaper(tabId) {
   return { success: true, data: uploadResult.json || {}, fileSize };
 }
 
+// ─── Context menu ───────────────────────────────────────────────────────────
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'upload-to-alphaxiv',
+      title: 'Upload PDF to AlphaXiv',
+      contexts: ['link', 'page'],
+    });
+  });
+});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== 'upload-to-alphaxiv') return;
+
+  // Determine the PDF URL: prefer clicked link, fallback to current page
+  const targetUrl = info.linkUrl || info.pageUrl;
+  if (!targetUrl) return;
+
+  // Build a paper object for upload
+  const title = (tab.title || 'document').replace(/\s*[-|–—]\s*.*$/, '').trim();
+  const paper = { title, pdfUrl: targetUrl, source: 'context-menu', pageUrl: tab.url };
+  paperCache.set(tab.id, paper);
+
+  // Show uploading badge
+  chrome.action.setBadgeText({ text: '…', tabId: tab.id });
+  chrome.action.setBadgeBackgroundColor({ color: '#666', tabId: tab.id });
+
+  const result = await uploadPaper(tab.id);
+
+  if (result.success) {
+    chrome.action.setBadgeText({ text: '✓', tabId: tab.id });
+    chrome.action.setBadgeBackgroundColor({ color: '#4CAF50', tabId: tab.id });
+  } else {
+    chrome.action.setBadgeText({ text: '✗', tabId: tab.id });
+    chrome.action.setBadgeBackgroundColor({ color: '#F44336', tabId: tab.id });
+    console.error('Context menu upload failed:', result.error, result.serverMessage);
+  }
+
+  // Clear badge after 5 seconds
+  setTimeout(() => chrome.action.setBadgeText({ text: '', tabId: tab.id }), 5000);
+});
+
 // ─── Message router ─────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab ? sender.tab.id : null;
@@ -625,8 +667,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const cached = paperCache.get(id);
         if (cached) paper = cached;
 
-        // Step 3: try asking content script for a richer title (best-effort, short timeout)
-        if (paper && id) {
+        // Step 3: try asking content script (works for generic sites like Springer, SIAM, etc.)
+        if (id) {
           const cs = await new Promise((resolve) => {
             const timer = setTimeout(() => resolve(null), 2000);
             chrome.tabs.sendMessage(id, { type: 'GET_PAPER_INFO' }, (resp) => {

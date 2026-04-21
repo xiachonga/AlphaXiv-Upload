@@ -7,7 +7,8 @@
     "storage",
     "cookies",
     "activeTab",
-    "scripting"
+    "scripting",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://dl.acm.org/*",
@@ -35,6 +36,17 @@
       "matches": ["https://alphaxiv.org/*", "https://www.alphaxiv.org/*"],
       "js": ["content/alphaxiv.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "exclude_matches": [
+        "https://dl.acm.org/*",
+        "https://ieeexplore.ieee.org/*",
+        "https://alphaxiv.org/*",
+        "https://www.alphaxiv.org/*"
+      ],
+      "js": ["content/generic.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
