@@ -368,9 +368,8 @@ async function uploadPaper(tabId) {
   }
 
   // 3. Download PDF.
-  //    Injected into the source tab for ACM/IEEE (uses institutional/IP auth cookies).
+  //    Injected into the source tab for ACM/IEEE/generic (uses institutional/IP auth cookies).
   //    Fetched directly from SW for public PDFs (arXiv, etc.).
-  //    For IEEE stamp.jsp: the page embeds the PDF in an iframe — we resolve the real URL first.
   const tabPdfFetcher = async (startUrl) => {
     const toBuf = async (url) => {
       const r = await fetch(url, { credentials: 'include' });
@@ -378,34 +377,24 @@ async function uploadPaper(tabId) {
       return r.arrayBuffer();
     };
 
-    const bufToBase64 = (buf) => {
-      const bytes = new Uint8Array(buf);
-      const chunkSize = 8192;
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += chunkSize)
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-      return btoa(binary);
-    };
-
     const isPdf = (buf) => {
       const b = new Uint8Array(buf, 0, 4);
       return b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
     };
 
+    // Return raw bytes as Array (structured clone friendly, avoids base64 in tab)
+    const toResult = (buf) => ({ bytes: Array.from(new Uint8Array(buf)), size: buf.byteLength });
+
     // First try fetching the URL directly
     let bufOrErr = await toBuf(startUrl);
     if (bufOrErr.error) return bufOrErr;
 
-    if (isPdf(bufOrErr)) {
-      return { base64: bufToBase64(bufOrErr), size: bufOrErr.byteLength };
-    }
+    if (isPdf(bufOrErr)) return toResult(bufOrErr);
 
     // Got HTML — look for the real PDF URL inside the page DOM
     // (IEEE stamp.jsp embeds the PDF in an iframe)
     const candidates = [
-      // iframe src pointing to a PDF or stampPDF endpoint
       ...Array.from(document.querySelectorAll('iframe[src]')).map(el => el.src),
-      // embed / object
       ...Array.from(document.querySelectorAll('embed[src],object[data]'))
            .map(el => el.src || el.data),
     ].filter(Boolean);
@@ -413,9 +402,7 @@ async function uploadPaper(tabId) {
     for (const candidate of candidates) {
       const abs = new URL(candidate, location.href).href;
       const b = await toBuf(abs);
-      if (!b.error && isPdf(b)) {
-        return { base64: bufToBase64(b), size: b.byteLength };
-      }
+      if (!b.error && isPdf(b)) return toResult(b);
     }
 
     // Last resort: look for a link/anchor href ending in .pdf
@@ -423,28 +410,13 @@ async function uploadPaper(tabId) {
     if (pdfLink) {
       const abs = new URL(pdfLink.href, location.href).href;
       const b = await toBuf(abs);
-      if (!b.error && isPdf(b)) return { base64: bufToBase64(b), size: b.byteLength };
+      if (!b.error && isPdf(b)) return toResult(b);
     }
 
     return { error: 'NOT_PDF' };
   };
 
-  const swPdfFetcher = async (url) => {
-    const resp = await fetch(url, { credentials: 'include' });
-    if (!resp.ok) return { error: `HTTP ${resp.status}`, status: resp.status };
-    const buf = await resp.arrayBuffer();
-    const b = new Uint8Array(buf, 0, 4);
-    if (!(b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46))
-      return { error: 'NOT_PDF' };
-    const bytes = new Uint8Array(buf);
-    const chunkSize = 8192;
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += chunkSize)
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-    return { base64: btoa(binary), size: buf.byteLength };
-  };
-
-  let base64pdf, fileSize;
+  let pdfBuffer, fileSize;
   try {
     let result;
     if (paper.source === 'acm' || paper.source === 'ieee' || paper.source === 'generic' || paper.source === 'context-menu') {
@@ -457,7 +429,14 @@ async function uploadPaper(tabId) {
       result = injected && injected[0] && injected[0].result;
       if (!result) return { success: false, error: 'PDF 下载失败：注入脚本无返回值' };
     } else {
-      result = await swPdfFetcher(paper.pdfUrl);
+      // Public PDFs (arXiv, etc.) — fetch directly from service worker
+      const resp = await fetch(paper.pdfUrl, { credentials: 'include' });
+      if (!resp.ok) result = { error: `HTTP ${resp.status}` };
+      else {
+        const buf = await resp.arrayBuffer();
+        if (!validatePDFMagicBytes(buf)) result = { error: 'NOT_PDF' };
+        else result = { bytes: Array.from(new Uint8Array(buf)), size: buf.byteLength };
+      }
     }
 
     if (result.error === 'NOT_PDF') {
@@ -466,138 +445,52 @@ async function uploadPaper(tabId) {
     if (result.error) {
       return { success: false, error: `PDF 下载失败：${result.error}` };
     }
-    base64pdf = result.base64;
+    pdfBuffer = new Uint8Array(result.bytes);
     fileSize = result.size;
   } catch (err) {
     return { success: false, error: 'PDF 下载异常：' + err.message };
   }
 
-  // 4. Upload by injecting into the alphaxiv.org tab.
-  //    Requests from page context are not subject to the SW Authorization header restriction.
-  //    We read Clerk's __session cookie via document.cookie (it's not httpOnly).
-  const [axTabs1, axTabs2] = await Promise.all([
-    chrome.tabs.query({ url: 'https://alphaxiv.org/*' }),
-    chrome.tabs.query({ url: 'https://www.alphaxiv.org/*' }),
-  ]);
-  const axTab = [...axTabs1, ...axTabs2][0];
-  if (!axTab) {
-    return { success: false, error: '请先打开 alphaxiv.org 标签页并登录，然后重试' };
-  }
-
+  // 4. Convert to base64 and upload directly from the service worker.
+  //    Extension SW with host_permissions is not subject to CORS — no need to
+  //    inject into the alphaxiv.org tab, saving a full IPC round-trip of the PDF data.
+  const base64pdf = arrayBufferToBase64(pdfBuffer.buffer);
+  const filename = paper.title.replace(/[^\w\s\-\.]/g, '').replace(/\s+/g, '_').slice(0, 80) + '.pdf';
   const extraHeaders = await getExtraHeaders();
 
-  let injected;
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+  if (extraHeaders['arxiv-pageview-id'])  headers['arxiv-pageview-id']  = extraHeaders['arxiv-pageview-id'];
+  if (extraHeaders['arxiv-session-id'])   headers['arxiv-session-id']   = extraHeaders['arxiv-session-id'];
+  if (extraHeaders['user-session-id'])    headers['user-session-id']    = extraHeaders['user-session-id'];
+  if (extraHeaders['client-commit-hash']) headers['client-commit-hash'] = extraHeaders['client-commit-hash'];
+
+  let resp;
   try {
-    injected = await chrome.scripting.executeScript({
-      target: { tabId: axTab.id },
-      world: 'MAIN',   // run in the page's real JS context — Clerk and real fetch live here
-      func: async (payload, extra) => {
-        const debug = {};
-
-        // --- Strategy 1: Clerk SDK (MAIN world has access) ---
-        let sessionToken = null;
-        try {
-          if (window.Clerk) {
-            debug.hasClerk = true;
-            debug.clerkKeys = Object.keys(window.Clerk);
-            if (window.Clerk.session) {
-              sessionToken = await window.Clerk.session.getToken();
-              debug.clerkTokenPreview = sessionToken ? sessionToken.slice(0, 20) : null;
-            }
-          } else {
-            debug.hasClerk = false;
-          }
-        } catch (e) { debug.clerkError = e.message; }
-
-        // --- Strategy 2: document.cookie ---
-        if (!sessionToken) {
-          const allCookies = document.cookie.split(';').map(c => c.trim());
-          debug.cookieNames = allCookies.map(c => c.split('=')[0]);
-          // Try versioned first, then plain __session
-          for (const c of allCookies) {
-            const eq = c.indexOf('=');
-            const name = c.slice(0, eq);
-            const val  = c.slice(eq + 1);
-            if ((name === '__session' || name.startsWith('__session_')) && val.startsWith('eyJ')) {
-              sessionToken = val;
-              debug.cookieTokenSource = name;
-              debug.cookieTokenPreview = val.slice(0, 20);
-              break;
-            }
-          }
-        }
-
-        if (!sessionToken) {
-          return { error: 'No token found', debug };
-        }
-
-        // --- Make the upload request ---
-        const headers = { 'Authorization': `Bearer ${sessionToken}`, 'Content-Type': 'application/json' };
-        for (const [k, v] of Object.entries(extra)) {
-          if (v) headers[k] = v;
-        }
-        debug.authHeaderPreview = `Bearer ${sessionToken.slice(0, 20)}…`;
-
-        // Send the upload request with the correct schema fields
-        const resp = await fetch('https://api.alphaxiv.org/v2/papers/private', {
-          method: 'POST',
-          credentials: 'include',
-          headers,
-          body: JSON.stringify({
-            filename:    payload.filename,
-            contentType: 'application/pdf',
-            file:        payload.file,
-          }),
-        });
-        const text = await resp.text();
-        let json = null;
-        try { json = JSON.parse(text); } catch (_) {}
-        return { status: resp.status, ok: resp.ok, text, json, debug };
-      },
-      args: [
-        {
-          filename:    paper.title.replace(/[^\w\s\-\.]/g, '').replace(/\s+/g, '_').slice(0, 80) + '.pdf',
-          file:        base64pdf,
-          // keep extra context fields for potential future use
-          title:       paper.title,
-          source:      paper.source,
-          source_url:  paper.pageUrl,
-        },
-        {
-          'arxiv-pageview-id':  extraHeaders['arxiv-pageview-id']  || '',
-          'arxiv-session-id':   extraHeaders['arxiv-session-id']   || '',
-          'user-session-id':    extraHeaders['user-session-id']    || '',
-          'client-commit-hash': extraHeaders['client-commit-hash'] || '/client',
-        },
-      ],
+    resp = await fetch('https://api.alphaxiv.org/v2/papers/private', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ filename, contentType: 'application/pdf', file: base64pdf }),
     });
   } catch (err) {
-    return { success: false, error: '注入上传脚本失败：' + err.message };
+    return { success: false, error: '上传请求失败：' + err.message };
   }
 
-  const uploadResult = injected && injected[0] && injected[0].result;
-  if (!uploadResult) return { success: false, error: '上传脚本无返回' };
-  if (uploadResult.error) {
-    const { clerkKeys: _dropped, ...compactDebug } = uploadResult.debug || {};
-    return {
-      success: false,
-      error: uploadResult.error,
-      serverMessage: JSON.stringify(compactDebug, null, 2),
-    };
-  }
+  const text = await resp.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (_) {}
 
-  if (!uploadResult.ok) {
-    const respJson = uploadResult.json;
-    const candidate = respJson && (respJson.message || respJson.error || respJson.detail);
+  if (!resp.ok) {
+    const candidate = json && (json.message || json.error || json.detail);
     const serverMsg = typeof candidate === 'string'
       ? candidate
-      : (respJson ? JSON.stringify(respJson, null, 2) : (uploadResult.text || '').slice(0, 400) || '（无响应体）');
-    const { clerkKeys: _ck, ...compactDbg } = uploadResult.debug || {};
-    const debugInfo = Object.keys(compactDbg).length ? '\n\nDebug: ' + JSON.stringify(compactDbg, null, 2) : '';
-    return { success: false, error: `上传失败 HTTP ${uploadResult.status}`, serverMessage: serverMsg + debugInfo };
+      : (json ? JSON.stringify(json, null, 2) : text.slice(0, 400) || '（无响应体）');
+    return { success: false, error: `上传失败 HTTP ${resp.status}`, serverMessage: serverMsg };
   }
 
-  return { success: true, data: uploadResult.json || {}, fileSize };
+  return { success: true, data: json || {}, fileSize };
 }
 
 // ─── Context menu ───────────────────────────────────────────────────────────
